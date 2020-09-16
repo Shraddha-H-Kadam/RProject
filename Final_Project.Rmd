@@ -1,0 +1,538 @@
+---
+title: "Final Project"
+author: "Shraddha Hemant Kadam (sxk190069@utdallas.edu)"
+date: "08/04/2020"
+output:
+  pdf_document:
+    latex_engine: xelatex
+  latex_engine: default'
+---
+
+
+```{r package loading, warning=FALSE}
+
+if(!require("pacman")) install.packages("pacman")
+pacman::p_load(forecast, leaps, ggcorrplot, corrplot, tidyverse, reshape, gplot, ggmap, mlbench, data.table, factoextra)
+search()
+theme_set(theme_classic())
+install.packages("funModeling")
+install.packages("flexclust")
+install.packages("tidyverse")
+install.packages("Hmisc")
+library(gridExtra)
+install.packages("RCurl")
+install.packages("skimr")
+install.packages("grid")
+library(flexclust)
+install.packages("modeltools")
+install.packages("stats4")
+library(stats4)
+library(modeltools)
+library(funModeling)
+library(skimr)
+library(grid)
+library(RColorBrewer)
+library(RCurl)
+library(dplyr)
+library(ggplot2)
+library(reshape2) 
+library(gridExtra) # allow us to plot two plots in a row
+options(scipen=999) # disable scientific notation
+pacman::p_load(caret, corrplot, glmnet, tidyverse, data.table, gplots, ggrepel)
+```
+
+```{r read datasets, warning= FALSE}
+#loading updated datasets from github
+supply_kcal_data <- read.csv(text = getURL("https://raw.githubusercontent.com/mariarencode/COVID_19_Dataset_Challenge/master/Cleaned_Datasets/Food_Supply_kcal_Data.csv"))
+supply_kg_data <- read.csv(text = getURL("https://raw.githubusercontent.com/mariarencode/COVID_19_Dataset_Challenge/master/Cleaned_Datasets/Food_Supply_Quantity_kg_Data.csv"))
+protein_data <- read.csv(text = getURL("https://raw.githubusercontent.com/mariarencode/COVID_19_Dataset_Challenge/master/Cleaned_Datasets/Protein_Supply_Quantity_Data.csv"))
+fat_data <- read.csv(text= getURL("https://raw.githubusercontent.com/mariarencode/COVID_19_Dataset_Challenge/master/Cleaned_Datasets/Fat_Supply_Quantity_Data.csv"))
+```
+
+```{r EDA, warning= FALSE}
+#display head and tail of datasets
+
+head(fat_data,5)
+tail(fat_data,5)
+head(supply_kcal_data,5)
+tail(supply_kcal_data,5)
+head(supply_kg_data,5)
+tail(supply_kg_data,5)
+head(protein_data,5)
+tail(protein_data,5)
+
+#get summary of datasets
+summary(fat_data)
+summary(supply_kcal_data)
+summary(supply_kg_data)
+summary(protein_data)
+
+
+df_status(fat_data)
+df_status(supply_kcal_data)
+df_status(supply_kg_data)
+df_status(protein_data)
+
+#handeling missing values
+df_status(fat_data, print_results = FALSE) %>% select(variable, q_na, p_na) %>% arrange(-q_na)
+df_fat_data<- fat_data
+df_fat_data[is.na(df_fat_data)]=0
+
+
+df_supply_kcal_data <- supply_kcal_data
+df_supply_kcal_data[is.na(df_supply_kcal_data)]=0
+
+df_supply_kg_data<- supply_kg_data
+df_supply_kg_data[is.na(df_supply_kg_data)]=0
+
+df_protein_data<- protein_data
+df_protein_data[is.na(df_protein_data)]=0
+
+
+#check to see if there are missing values in datasets
+sum(is.na(df_fat_data))
+sum(is.na(df_supply_kcal_data))
+sum(is.na(df_protein_data))
+sum(is.na(df_supply_kg_data))
+
+#checking the number of zeros
+df_status(df_fat_data, print_results = FALSE) %>% select(variable, q_zeros, p_zeros) %>% arrange(-q_zeros)
+
+df_status(df_supply_kcal_data, print_results = FALSE) %>% select(variable, q_zeros, p_zeros) %>% arrange(-q_zeros)
+
+df_status(df_supply_kg_data, print_results = FALSE) %>% select(variable, q_zeros, p_zeros) %>% arrange(-q_zeros)
+
+df_status(df_protein_data, print_results = FALSE) %>% select(variable, q_zeros, p_zeros) %>% arrange(-q_zeros)
+
+
+#get detailed summary by providing larger set of statistics
+skim(df_fat_data)
+skim(df_supply_kcal_data)
+skim(df_supply_kg_data)
+skim(df_protein_data)
+
+```
+
+```{r plots, warning= FALSE}
+#scatterplot
+plot(df_fat_data[, c("Active","Confirmed", "Deaths", "Recovered")], col= "green")
+
+
+ggplot(df_fat_data) +
+  geom_boxplot(aes(x = Active, y = Population), 
+               fill = "gold1", outlier.color = "firebrick2") + 
+  xlab("Active") + ggtitle("COVID-19 Active cases")
+
+ggplot(df_fat_data) +
+  geom_boxplot(aes(x = Confirmed, y = Population), 
+               fill = "gold1", outlier.color = "firebrick2") + 
+  xlab("Active") + ggtitle("COVID-19 Confirmed cases")
+
+ggplot(df_fat_data) +
+  geom_boxplot(aes(x = Deaths, y = Population), 
+               fill = "gold1", outlier.color = "firebrick2") + 
+  xlab("Active") + ggtitle("COVID-19 Death cases")
+
+ggplot(df_fat_data) +
+  geom_boxplot(aes(x = Recovered, y = Population), 
+               fill = "gold1", outlier.color = "firebrick2") + 
+  xlab("Active") + ggtitle("COVID-19 Recovered cases")
+```
+
+
+```{r graph pie chart, warning= FALSE}
+pie_charts<- function(data, title_text) {
+  chart_data <- data.frame(
+    food_groups = names(data[2:24]),
+    food_percentage = as.numeric(data[2:24])
+  )
+  
+  ggplot(chart_data, aes(x="", y=food_percentage, fill=food_groups)) +
+    geom_bar(stat="identity", width=1) +
+    theme_classic() +
+    theme(plot.title = element_text(hjust=0.5),
+          axis.line = element_blank(),
+          axis.text = element_blank(),
+          axis.ticks = element_blank()) +
+    labs(fill = "food_group",
+         x = NULL,
+         y = NULL,
+         title = title_text) + 
+    coord_polar("y")
+}
+
+# Graph bar plots
+bar_plot <- function(data, title_text, rounding_digits){
+  bar_plot_data <- data.frame(
+    groups = names(data),
+    percentage = as.numeric(data)
+  )
+  ggplot(data=bar_plot_data, aes(x=groups, y=percentage, fill=groups)) +
+    geom_bar(stat="identity", position=position_dodge())+
+    geom_text(aes(label=paste(round(percentage,rounding_digits), "%")), vjust=1.6, color="black",
+              position = position_dodge(0.4), size=3.5)+
+    scale_fill_brewer(palette="Paired")+
+    theme_minimal() +
+    labs(x = NULL,
+         y = "Percentage out of Total Population",
+         title = title_text)
+}
+```
+
+```{r India_data_Analysis, warning= FALSE}
+# India data analysis and plots
+# Pull out India data
+India_fat_data <- df_fat_data[which(df_fat_data$Country == "India"),]
+India_supply_kcal_data <- df_supply_kcal_data[which(df_supply_kcal_data$Country == "India"),]
+India_supply_kg_data <- df_supply_kg_data[which(df_supply_kg_data$Country == "India"),]
+India_protein_data <- df_protein_data[which(df_protein_data$Country == "India"),]
+# Pie charts for India 
+India_fat_pie_chart <- pie_charts(India_fat_data, "Percentage of Fat Consumed (India)")
+India_food_kcal_pie_chart <- pie_charts(India_supply_kcal_data, "Percentage of Energy Consumed (India)")
+India_food_kg_pie_chart <- pie_charts(India_supply_kg_data, "Percentage of Food Supply (India)")
+India_protein_pie_chart <- pie_charts(India_protein_data, "Percentage of Protein Consumed (India)")
+# Bar plots for US 
+India_obesity_undernourished_bar_plot <- bar_plot(India_supply_kg_data[25:26], "Obesity and Undernourished Percentages (India)", 3)
+India_covid_cases_bar_plot <- bar_plot(India_supply_kg_data[27:30], "COVID-19 Cases Percentages (India)", 3)
+```
+
+
+```{r US_data_analysis, warning= FALSE}
+# US data analysis and plots
+# Pull out US data
+us_fat_data <- df_fat_data[which(df_fat_data$Country == "United States of America"),]
+us_supply_kcal_data <- df_supply_kcal_data[which(df_supply_kcal_data$Country == "United States of America"),]
+us_supply_kg_data <- df_supply_kg_data[which(df_supply_kg_data$Country == "United States of America"),]
+us_protein_data <- df_protein_data[which(df_protein_data$Country == "United States of America"),]
+# Pie charts for US 
+us_fat_pie_chart <- pie_charts(us_fat_data, "Percentage of Fat Consumed (US)")
+us_food_kcal_pie_chart <- pie_charts(us_supply_kcal_data, "Percentage of Energy Consumed (US)")
+us_food_kg_pie_chart <- pie_charts(us_supply_kg_data, "Percentage of Food Supply (US)")
+us_protein_pie_chart <- pie_charts(us_protein_data, "Percentage of Protein Consumed (US)")
+# Bar plots for US 
+us_obesity_undernourished_bar_plot <- bar_plot(us_supply_kg_data[25:26], "Obesity and Undernourished Percentages (US)", 3)
+us_covid_cases_bar_plot <- bar_plot(us_supply_kg_data[27:30], "COVID-19 Cases Percentages (US)", 3)
+```
+
+```{r fat_Consumption, warning= FALSE}
+# Fat consumption from food groups comparison
+grid.arrange(us_fat_pie_chart, India_fat_pie_chart, nrow = 2)
+```
+From the above pir charts, it seems like India consumes more fat from Alcoholic Beverages than the US and US consumes more fats from pulses/Spices than that consumed in India. But overall, it seems like the difference in each category isn't drastically different between the two countries.
+
+```{r Energy_Consumption, warning= FALSE}
+grid.arrange(us_food_kcal_pie_chart, India_food_kcal_pie_chart, nrow = 2)
+```
+For the energy consumed(in kilo calories), India has slightly higher percentage in the Animal product category whereas US is higher in percentage in Treenuts and Sugar Crops.
+
+```{r supply, warning= FALSE}
+grid.arrange(us_food_kg_pie_chart, India_food_kg_pie_chart, nrow = 2)
+
+```
+Looking at the food supply comparision, we see that India has more supply of Animal Products than US whereas US has slightly highe supply of Fruits excluding wine than India.
+
+```{r protein consumption, warning= FALSE}
+grid.arrange(us_protein_pie_chart, India_protein_pie_chart, nrow = 2)
+
+```
+From the above charts we can see that India's protein consumption from Alcoholic Beverages,Pulses /Spices /Starchy roots and Fish Seafood in more than US. On the other side US's protein consumption is more from Fruits and Animal Fats/ Animal Products.
+
+```{r obesity, warning= FALSE}
+grid.arrange(us_obesity_undernourished_bar_plot,India_obesity_undernourished_bar_plot, nrow = 2)
+
+```
+Looking at the obesity and undernourished rate bar plot above, US has higher obesity percentage whereas India has higher Undernourished percentage.
+
+```{r covid, warning= FALSE}
+grid.arrange(us_covid_cases_bar_plot, India_covid_cases_bar_plot, nrow = 2)
+
+```
+And lastly, taking a quick look at the percentage of COVID cases. US confirmed cases is 1.415% of the entire population, whereas that of India is 0.129% of the entire population. The recovery rate of India is higher than that of US.
+
+
+
+```{r pricipal component analysis, warning= FALSE}
+pcs1<- prcomp(na.omit(df_protein_data[,-c(1,25,26,32)]), scale. = T)
+summary(pcs1)  
+
+pcs2 <- prcomp(na.omit(df_supply_kg_data[,-c(1,25,26,32)]), scale. = T)
+summary(pcs2)
+
+pcs3_carbs <- prcomp(na.omit(df_supply_kcal_data[,-c(1,25,26,32)]), scale. = T)
+summary(pcs3_carbs)  
+
+pcs4_fats <- prcomp(na.omit(df_fat_data[,-c(1,25,26,32)]), scale. = T)
+summary(pcs4_fats)  
+```
+since 99% is covered till pc24, we will consider variables till pc24
+
+```{r Data Partition, warning= FALSE}
+set.seed(42)
+#randomly order the dataset 
+rows_p<- sample(nrow(df_protein_data))
+df_protein_data <- df_protein_data[rows_p,]
+
+rows_c<- sample(nrow(df_supply_kcal_data))
+df_supply_kcal_data<- df_supply_kcal_data[rows_c,]
+
+rows_f<- sample(nrow(df_fat_data))
+df_fat_data <- df_fat_data[rows_f,]
+
+rows_k<- sample(nrow(df_supply_kg_data))
+df_supply_kg_data<- df_supply_kg_data[rows_k,]
+
+#splitting the data
+set.seed(42)
+split <- round(nrow(df_protein_data) * 0.8)
+trainp.df <- df_protein_data[1:split, -c(1,25,26,28:32)]
+testp.df <- df_protein_data[(split+1):nrow(df_protein_data), -c(1,25,26,28:32) ]
+
+split <- round(nrow(df_supply_kcal_data) * 0.8)
+trainc.df <- df_supply_kcal_data[1:split, -c(1,25,26,28:32)]
+testc.df <- df_supply_kcal_data[(split+1):nrow(df_supply_kcal_data), -c(1,25,26,28:32) ]
+
+split <- round(nrow(df_fat_data) * 0.8)
+trainf.df <- df_fat_data[1:split, -c(1,25,26,28:32)]
+testf.df <- df_fat_data[(split+1):nrow(df_fat_data), -c(1,25,26,28:32) ]
+
+split <- round(nrow(df_supply_kg_data) * 0.8)
+trains.df <- df_supply_kg_data[1:split, -c(1,25,26,28:32)]
+tests.df <- df_supply_kg_data[(split+1):nrow(df_supply_kg_data), -c(1,25,26,28:32) ]
+
+
+
+```
+
+
+```{r Clustering, warning=FALSE}
+#Calculating Distance
+
+# Set row names to the utilities column
+
+row.names(df_protein_data) <- df_protein_data[,1]
+# Remove the utility column (include only numeric variables in Cluster Analysis)
+protein.df <- df_protein_data[,-c(1,25,26,28:32)]
+# Compute Euclidean distance
+d <- dist(protein.df, method = "euclidean")
+# Normalize and calculate distances
+protein.df.norm <- sapply(protein.df, scale)
+# Add row names: utilities
+row.names(protein.df.norm) <- row.names(protein.df) 
+# ALT: Compute normalized distance based on all 8 variables
+d.norm <- dist(protein.df.norm, method = "euclidean")
+d.norm
+
+row.names(df_supply_kcal_data) <- df_supply_kcal_data[,1]
+carbs.df <- df_supply_kcal_data[,-c(1,25,26,28:32)]
+d <- dist(carbs.df, method = "euclidean")
+carbs.df.norm <- sapply(carbs.df, scale)
+row.names(carbs.df.norm) <- row.names(carbs.df) 
+d.norm2 <- dist(carbs.df.norm, method = "euclidean")
+d.norm2
+
+row.names(df_fat_data) <- df_fat_data[,1]
+fats.df <- df_fat_data[,-c(1,25,26,28:32)]
+d <- dist(fats.df, method = "euclidean")
+fats.df.norm <- sapply(fats.df, scale)
+row.names(fats.df.norm) <- row.names(fats.df) 
+d.norm3 <- dist(fats.df.norm, method = "euclidean")
+d.norm3
+
+row.names(df_supply_kg_data) <- df_supply_kg_data[,1]
+supply.df <- df_supply_kg_data[,-c(1,25,26,28:32)]
+d <- dist(supply.df, method = "euclidean")
+supply.df.norm <- sapply(supply.df, scale)
+row.names(supply.df.norm) <- row.names(supply.df) 
+d.norm4 <- dist(supply.df.norm, method = "euclidean")
+d.norm4
+
+
+  ## Generate Dendrogram using multiple methods  
+hc1 <- hclust(d.norm, method = "single")
+plot(hc1, hang = -1, main = "Single Linkage", col = "cornflowerblue") +
+  abline(h=2.7, lty = 1, lwd = 1, col = "firebrick4")
+
+hc2 <- hclust(d.norm, method = "complete")
+plot(hc2, hang = -1, main = "Complete Linkage", col = "dodgerblue") +
+  abline(h=3.8, lty = 1, lwd = 1, col = "firebrick4")
+
+hc3 <- hclust(d.norm, method = "average")
+plot(hc3, hang = -1, main = "Average Linkage", col = "deepskyblue") +
+  abline(h= 3.5, lty = 1, lwd = 1, col = "firebrick4")
+
+hc22 <- hclust(d.norm2, method = "complete")
+plot(hc22, hang = -1, main = "Complete Linkage", col = "dodgerblue") +
+  abline(h=3.8, lty = 1, lwd = 1, col = "firebrick4")
+
+hc32 <- hclust(d.norm3, method = "complete")
+plot(hc32, hang = -1, main = "Complete Linkage", col = "dodgerblue") +
+  abline(h=3.8, lty = 1, lwd = 1, col = "firebrick4")
+
+hc42 <- hclust(d.norm4, method = "complete")
+plot(hc42, hang = -1, main = "Complete Linkage", col = "dodgerblue") +
+  abline(h=3.8, lty = 1, lwd = 1, col = "firebrick4")
+
+
+## Check memberships in above clusters
+memb1 <- cutree(hc1, k = 6)
+memb1
+
+memb2 <- cutree(hc2, k = 6)
+memb2
+
+memb3 <- cutree(hc3, k = 6)
+memb3
+
+memb22 <- cutree(hc2, k = 6)
+memb22
+
+memb32 <- cutree(hc32, k = 6)
+memb32
+
+memb42 <- cutree(hc42, k = 6)
+memb42
+
+#Validating clusters using heatmaps
+
+row.names(protein.df.norm) <- paste(memb2, ": ", row.names(protein.df), sep = "")
+# Heatmap 
+heatmap(as.matrix(protein.df.norm), Colv = NA, hclustfun = hclust, col = brewer.pal(8, "PuBu"))
+
+row.names(carbs.df.norm) <- paste(memb2, ": ", row.names(carbs.df), sep = "")
+# Heatmap 
+heatmap(as.matrix(carbs.df.norm), Colv = NA, hclustfun = hclust, col = brewer.pal(8, "PuBu"))
+
+row.names(fats.df.norm) <- paste(memb2, ": ", row.names(fats.df), sep = "")
+# Heatmap 
+heatmap(as.matrix(fats.df.norm), Colv = NA, hclustfun = hclust, col = brewer.pal(8, "PuBu"))
+
+row.names(supply.df.norm) <- paste(memb2, ": ", row.names(supply.df.norm), sep = "")
+# Heatmap 
+heatmap(as.matrix(supply.df.norm), Colv = NA, hclustfun = hclust, col = brewer.pal(8, "PuBu"))
+
+
+#Assign the test observations to the clusters built upon the training set.
+x <- as.kcca(hc2, protein.df.norm, k= 6)
+clusterTrain1 <- predict(x)
+clusterTest1 <- predict(x, newdata = testp.df)
+
+a <- as.kcca(hc22, carbs.df.norm, k= 6)
+clusterTrain2 <- predict(a)
+clusterTest2 <- predict(a, newdata = testc.df)
+
+b <- as.kcca(hc32, fats.df.norm, k= 6)
+clusterTrain3 <- predict(b)
+clusterTest3 <- predict(b, newdata = testf.df)
+
+c <- as.kcca(hc42, supply.df.norm, k= 6)
+clusterTrain4 <- predict(c)
+clusterTest4 <- predict(c, newdata = tests.df)
+
+
+
+
+#How many test-set observations were assigned to Clusters?
+table(clusterTest1)
+table(clusterTest2)
+table(clusterTest3)
+table(clusterTest4)
+
+#Using the subset function, build data frames
+proteintrain1 <- subset(trainp.df, clusterTrain1 == 1)
+proteintrain2 <- subset(trainp.df, clusterTrain1 == 2)
+proteintrain3 <- subset(trainp.df, clusterTrain1 == 3)
+
+proteintrain21 <- subset(trainc.df, clusterTrain2 == 1)
+proteintrain22 <- subset(trainc.df, clusterTrain2 == 2)
+proteintrain23 <- subset(trainc.df, clusterTrain2 == 3)
+
+
+proteintrain31 <- subset(trainf.df, clusterTrain3 == 1)
+proteintrain32 <- subset(trainf.df, clusterTrain3 == 2)
+proteintrain33 <- subset(trainf.df, clusterTrain3 == 3)
+
+
+proteintrain41 <- subset(trains.df, clusterTrain4 == 1)
+proteintrain42 <- subset(trains.df, clusterTrain4 == 2)
+proteintrain43 <- subset(trains.df, clusterTrain4 == 3)
+
+
+
+
+proteintest1 <- subset(testp.df, clusterTest1 == 1)
+proteintest2 <- subset(testp.df, clusterTest1 == 2)
+proteintest3 <- subset(testp.df, clusterTest1 == 3)
+
+proteintest21 <- subset(testc.df, clusterTest2 == 1)
+proteintest22 <- subset(testc.df, clusterTest2 == 2)
+proteintest23 <- subset(testc.df, clusterTest2 == 3)
+
+proteintest31 <- subset(testf.df, clusterTest3 == 1)
+proteintest32 <- subset(testf.df, clusterTest3 == 2)
+proteintest33 <- subset(testf.df, clusterTest3 == 3)
+
+
+proteintest41 <- subset(tests.df, clusterTest4 == 1)
+proteintest42 <- subset(tests.df, clusterTest4 == 2)
+proteintest43 <- subset(tests.df, clusterTest4 == 3)
+
+#building regression
+trainp1 <- lm(Confirmed ~., data = proteintrain1)
+trainp2 <- lm(Confirmed ~., data = proteintrain2)
+trainp3 <- lm(Confirmed ~., data = proteintrain3)
+
+trainf1 <- lm(Confirmed ~., data = proteintrain31)
+trainf2 <- lm(Confirmed ~., data = proteintrain32)
+trainf3 <- lm(Confirmed ~., data = proteintrain33)
+
+trains1 <- lm(Confirmed ~., data = proteintrain41)
+trains3 <- lm(Confirmed ~., data = proteintrain43)
+
+
+
+#prediction
+predictTest1 <- predict(trainp1, newdata = proteintest1)
+predictTest2 <- predict(trainp2, newdata = proteintest2)
+predictTest3 <- predict(trainp3, newdata = proteintest3)
+
+
+predictTest31 <- predict(trainf1, newdata = proteintest31)
+predictTest32 <- predict(trainf2, newdata = proteintest32)
+predictTest33 <- predict(trainf3, newdata = proteintest33)
+
+predictTest41 <- predict(trains1, newdata = proteintest41)
+predictTest43 <- predict(trains3, newdata = proteintest43)
+
+
+#Evaluate the accuracy
+table(proteintest1$Confirmed, predictTest1 >= 0.5)
+table(proteintest2$Confirmed, predictTest2 >= 0.5)
+table(proteintest3$Confirmed, predictTest3 >= 0.5)
+
+
+
+table(proteintest31$Confirmed, predictTest31 >= 0.5)
+table(proteintest32$Confirmed, predictTest32 >= 0.5)
+table(proteintest33$Confirmed, predictTest33 >= 0.5)
+
+table(proteintest41$Confirmed, predictTest41 >= 0.5)
+table(proteintest43$Confirmed, predictTest43 >= 0.5)
+
+#To compute the overall test-set accuracy of the cluster-then-predict approach, we can combine all the test-set predictions into a single vector and all the true outcomes into a single vector:
+allPredictions_protein <- c(predictTest1, predictTest2, predictTest3)
+allOutcomes_protein <- c(proteintest1$Confirmed, proteintest2$Confirmed, proteintest3$Confirmed)
+
+
+
+allPredictions_fats <- c(predictTest31, predictTest32, predictTest33)
+allOutcomes_fats <- c(proteintest31$Confirmed, proteintest32$Confirmed, proteintest33$Confirmed)
+
+allPredictions_supply <- c(predictTest41, predictTest43)
+allOutcomes_supply <- c(proteintest41$Confirmed, proteintest42$Confirmed, proteintest43$Confirmed)
+#Evalute the overall accuracy
+table(allOutcomes_protein, allPredictions_protein>= 0.5)
+
+
+```
+Conclusion
+Connecting all the observations above, we can conclude that one of the reasons why India has a lower COVID infection rate could be related to the country's dietary choices. Even though there are thousands of other factors that can impact infection rate in either countries, this analysis still proves that adapting to a healthier diet is one of the most important steps we can take to help reduce the amount of COVID cases.
